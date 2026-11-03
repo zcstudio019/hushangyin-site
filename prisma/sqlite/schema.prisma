@@ -1,0 +1,718 @@
+generator client {
+  provider = "prisma-client-js"
+  output = "../../node_modules/@hsy/sqlite-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("SQLITE_DATABASE_URL")
+}
+
+enum CustomerType {
+  ENTERPRISE
+  SELF_EMPLOYED
+  PERSONAL
+}
+
+enum LeadStatus {
+  NEW
+  PENDING
+  FOLLOWING
+  COMPLETED
+  INVALID
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  SALES_MANAGER
+  FINANCING_ADVISOR
+  CONTENT_OPERATOR
+  CONTENT_REVIEWER
+}
+
+enum ContentStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+model Customer {
+  id           String       @id @default(cuid())
+  name         String
+  phone        String
+  customerType CustomerType
+  companyName  String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  leads        Lead[]
+  consents     Consent[]
+
+  @@index([phone])
+  @@map("customers")
+}
+
+model Lead {
+  attribution      LeadAttribution?
+  id               String           @id @default(cuid())
+  customerId       String?
+  customer         Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  name             String
+  phone            String
+  customerType     CustomerType
+  financingAmount  String
+  hasProperty      Boolean?
+  hasCompany       Boolean?
+  remark           String?
+  source           String           @default("website")
+  sourcePage       String
+  sourceArticleId  String?
+  sourceArticle    Article?         @relation(fields: [sourceArticleId], references: [id], onDelete: SetNull)
+  sourceParameters Json?
+  status           LeadStatus       @default(NEW)
+  assignedTo       String?
+  departmentId     String?
+  department       Department?      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  assignee         AdminUser?       @relation(fields: [assignedTo], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  consents         Consent[]
+
+  @@index([status, createdAt])
+  @@index([assignedTo, createdAt])
+  @@index([departmentId, createdAt])
+  @@index([customerId])
+  @@index([phone])
+  @@index([updatedAt])
+  @@index([sourceArticleId, createdAt])
+  @@map("leads")
+}
+
+model AdminUser {
+  analyticsConnections       SearchPlatformConnection[]
+  analyticsJobs              AnalyticsSyncJob[]
+  visibilityObservations     GeoVisibilityObservation[]
+  assignedArticleReviews     Article[]                  @relation("ArticleReviewAssignee")
+  assignedFaqReviews         Faq[]                      @relation("FaqReviewAssignee")
+  submittedArticles          Article[]                  @relation("ArticleSubmitter")
+  submittedFaqs              Faq[]                      @relation("FaqSubmitter")
+  faqVersions                FaqVersion[]
+  id                         String                     @id @default(cuid())
+  name                       String
+  email                      String                     @unique
+  passwordHash               String
+  role                       AdminRole                  @default(FINANCING_ADVISOR)
+  departmentId               String?
+  department                 Department?                @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  mustChangePassword         Boolean                    @default(false)
+  sessionVersion             Int                        @default(0)
+  initialCredentialExpiresAt DateTime?
+  lastLoginAt                DateTime?
+  isActive                   Boolean                    @default(true)
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  leads                      Lead[]
+  auditLogs                  AuditLog[]
+  sessions                   AdminSession[]
+  authoredArticles           Article[]                  @relation("ArticleAuthor")
+  editedArticles             Article[]                  @relation("ArticleEditor")
+  authoredFaqs               Faq[]                      @relation("FaqAuthor")
+  editedFaqs                 Faq[]                      @relation("FaqEditor")
+  articleVersions            ArticleVersion[]
+  contentReviews             ContentReview[]
+  generationTasks            GeoGenerationTask[]
+  generationTemplates        GeoGenerationTemplate[]
+  verifiedSources            ArticleSource[]            @relation("SourceVerifier")
+
+  @@index([departmentId, role, isActive])
+  @@map("admin_users")
+}
+
+model Department {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  users     AdminUser[]
+  leads     Lead[]
+
+  @@map("departments")
+}
+
+model AuditLog {
+  id           String     @id @default(cuid())
+  actorId      String?
+  actor        AdminUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action       String
+  resourceType String
+  resourceId   String?
+  metadata     Json?
+  createdAt    DateTime   @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Consent {
+  id                String    @id @default(cuid())
+  leadId            String?
+  lead              Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  consentType       String
+  policyVersion     String
+  agreedAt          DateTime  @default(now())
+  evidenceReference String    @unique
+
+  @@index([leadId])
+  @@index([customerId])
+  @@index([agreedAt])
+  @@map("consents")
+}
+
+model Article {
+  analyticsEvents        ContentEvent[]
+  analyticsDays          ContentDailyMetric[]
+  attributions           LeadAttribution[]
+  visibilityObservations GeoVisibilityObservation[]
+  reviewAssigneeId       String?
+  reviewAssignee         AdminUser?                 @relation("ArticleReviewAssignee", fields: [reviewAssigneeId], references: [id], onDelete: SetNull)
+  reviewAssignedRevision Int?
+  reviewAssignedAt       DateTime?
+  id                     String                     @id @default(cuid())
+  title                  String
+  slug                   String                     @unique
+  summary                String
+  content                String
+  category               String
+  status                 ContentStatus              @default(DRAFT)
+  publishedAt            DateTime?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  tags                   Json                   @default("[]")
+  sources                Json                       @default("[]")
+  contentFormat          String                     @default("MARKDOWN")
+  authorId               String?
+  author                 AdminUser?                 @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  editorId               String?
+  editor                 AdminUser?                 @relation("ArticleEditor", fields: [editorId], references: [id], onDelete: SetNull)
+  aiAssisted             Boolean                    @default(false)
+  revision               Int                        @default(0)
+  isLive                 Boolean                    @default(false)
+  publishedSnapshot      Json?
+  publishedRevision      Int?
+  submittedAt            DateTime?
+  submittedById          String?
+  submittedBy            AdminUser?                 @relation("ArticleSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  seoTitle               String?
+  metaDescription        String?
+  generationMetadata     Json?
+  complianceReport       Json?
+  questionLinks          ArticleQuestionRelation[]
+  faqLinks               ArticleFaqRelation[]
+  sourceRecords          ArticleSource[]
+  generationTask         GeoGenerationTask?
+  versions               ArticleVersion[]
+  reviews                ContentReview[]
+  questions              GeoQuestion[]
+  faqs                   Faq[]
+  relatedFrom            ArticleRelation[]          @relation("RelatedFrom")
+  relatedTo              ArticleRelation[]          @relation("RelatedTo")
+  leads                  Lead[]
+
+  @@index([status, publishedAt])
+  @@index([status, submittedAt])
+  @@index([reviewAssigneeId, status])
+  @@index([isLive, publishedAt])
+  @@index([category, status])
+  @@index([authorId])
+  @@map("articles")
+}
+
+model Faq {
+  analyticsEvents        ContentEvent[]
+  analyticsDays          ContentDailyMetric[]
+  attributions           LeadAttribution[]
+  reviewAssigneeId       String?
+  reviewAssignee         AdminUser?           @relation("FaqReviewAssignee", fields: [reviewAssigneeId], references: [id], onDelete: SetNull)
+  reviewAssignedRevision Int?
+  reviewAssignedAt       DateTime?
+  id                     String               @id @default(cuid())
+  question               String               @unique
+  importMetadata         Json?
+  answer                 String
+  category               String
+  status                 ContentStatus        @default(DRAFT)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  articleId              String?
+  article                Article?             @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  sources                Json                 @default("[]")
+  authorId               String?
+  author                 AdminUser?           @relation("FaqAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  editorId               String?
+  editor                 AdminUser?           @relation("FaqEditor", fields: [editorId], references: [id], onDelete: SetNull)
+  revision               Int                  @default(0)
+  isLive                 Boolean              @default(false)
+  publishedAt            DateTime?
+  publishedSnapshot      Json?
+  publishedRevision      Int?
+  submittedAt            DateTime?
+  submittedById          String?
+  submittedBy            AdminUser?           @relation("FaqSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  versions               FaqVersion[]
+  articleLinks           ArticleFaqRelation[]
+  reviews                ContentReview[]
+
+  @@index([status, category])
+  @@index([status, submittedAt])
+  @@index([reviewAssigneeId, status])
+  @@index([articleId, isLive])
+  @@map("faqs")
+}
+
+enum SearchIntent {
+  AWARENESS
+  COMPARISON
+  DECISION
+  PREPARATION
+}
+
+enum QuestionStatus {
+  OPEN
+  PLANNED
+  ANSWERED
+  ARCHIVED
+}
+
+model GeoQuestion {
+  id              String                    @id @default(cuid())
+  question        String                    @unique
+  importMetadata  Json?
+  category        String
+  keywords        Json                  @default("[]")
+  intent          SearchIntent              @default(AWARENESS)
+  priority        Int                       @default(3)
+  status          QuestionStatus            @default(OPEN)
+  articleId       String?
+  article         Article?                  @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  articleLinks    ArticleQuestionRelation[]
+  generationTasks GeoGenerationTask[]
+
+  @@index([status, priority])
+  @@index([category, intent])
+  @@index([articleId])
+  @@map("geo_questions")
+}
+
+enum GenerationStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model GeoGenerationTemplate {
+  id              String              @id @default(cuid())
+  name            String              @unique
+  description     String
+  templateContent String
+  version         Int                 @default(1)
+  isActive        Boolean             @default(true)
+  updatedById     String?
+  updatedBy       AdminUser?          @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  tasks           GeoGenerationTask[]
+
+  @@map("geo_generation_templates")
+}
+
+model GeoGenerationTask {
+  id                    String                @id @default(cuid())
+  questionId            String
+  question              GeoQuestion           @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  createdById           String
+  createdBy             AdminUser             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  creatorSessionVersion Int
+  status                GenerationStatus      @default(QUEUED)
+  articleType           String
+  audience              String
+  depth                 String
+  templateId            String
+  template              GeoGenerationTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  templateVersion       Int
+  providerName          String
+  modelName             String
+  inputSnapshot         Json
+  output                Json?
+  outputArticleId       String?               @unique
+  outputArticle         Article?              @relation(fields: [outputArticleId], references: [id], onDelete: SetNull)
+  idempotencyKey        String
+  activeKey             String?               @unique
+  attempts              Int                   @default(0)
+  maxAttempts           Int                   @default(3)
+  timeoutMs             Int                   @default(90000)
+  maxOutputTokens       Int                   @default(4000)
+  leaseToken            String?
+  leaseUntil            DateTime?
+  availableAt           DateTime              @default(now())
+  errorCode             String?
+  errorMessage          String?
+  tokenUsage            Json?
+  createdAt             DateTime              @default(now())
+  startedAt             DateTime?
+  completedAt           DateTime?
+  updatedAt             DateTime              @updatedAt
+  callLogs              GenerationCallLog[]
+
+  @@unique([createdById, idempotencyKey])
+  @@index([status, availableAt])
+  @@index([createdById, createdAt])
+  @@index([questionId])
+  @@index([leaseUntil])
+  @@map("geo_generation_tasks")
+}
+
+model GenerationCallLog {
+  id               String            @id @default(cuid())
+  taskId           String
+  task             GeoGenerationTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  attempt          Int
+  provider         String
+  model            String
+  requestId        String?
+  status           String
+  errorCode        String?
+  usage            Json?
+  estimatedCostUsd Decimal?
+  startedAt        DateTime          @default(now())
+  completedAt      DateTime?
+
+  @@unique([taskId, attempt])
+  @@map("generation_call_logs")
+}
+
+model GenerationWorkerHeartbeat {
+  id         String   @id
+  lastSeenAt DateTime
+
+  @@map("generation_worker_heartbeats")
+}
+
+model ArticleQuestionRelation {
+  articleId    String
+  article      Article     @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     GeoQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  relationType String      @default("RELATED")
+  createdAt    DateTime    @default(now())
+
+  @@id([articleId, questionId])
+  @@index([questionId])
+  @@map("article_question_relations")
+}
+
+model ArticleFaqRelation {
+  articleId    String
+  article      Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  faqId        String
+  faq          Faq     @relation(fields: [faqId], references: [id], onDelete: Restrict)
+  revision     Int
+  evidenceMode String
+
+  @@id([articleId, faqId])
+  @@index([faqId])
+  @@map("article_faq_relations")
+}
+
+model ArticleSource {
+  id           String          @id @default(cuid())
+  articleId    String?
+  article      Article?        @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  catalogId    String?
+  catalog      ArticleSource?  @relation("CatalogBinding", fields: [catalogId], references: [id], onDelete: Restrict)
+  bindings     ArticleSource[] @relation("CatalogBinding")
+  title        String
+  sourceUrl    String
+  sourceType   String          @default("REFERENCE")
+  excerpt      String
+  paragraph    String?
+  verifiedAt   DateTime?
+  validUntil   DateTime?
+  verifiedById String?
+  verifiedBy   AdminUser?      @relation("SourceVerifier", fields: [verifiedById], references: [id], onDelete: Restrict)
+  isActive     Boolean         @default(true)
+  revision     Int?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([articleId, revision])
+  @@index([catalogId])
+  @@index([isActive, verifiedAt])
+  @@map("article_sources")
+}
+
+model ArticleVersion {
+  id        String     @id @default(cuid())
+  articleId String
+  article   Article    @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  revision  Int
+  snapshot  Json
+  editorId  String?
+  editor    AdminUser? @relation(fields: [editorId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+
+  @@unique([articleId, revision])
+  @@map("article_versions")
+}
+
+model FaqVersion {
+  id        String     @id @default(cuid())
+  faqId     String
+  faq       Faq        @relation(fields: [faqId], references: [id], onDelete: Restrict)
+  revision  Int
+  snapshot  Json
+  editorId  String?
+  editor    AdminUser? @relation(fields: [editorId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+
+  @@unique([faqId, revision])
+  @@map("faq_versions")
+}
+
+model ArticleRelation {
+  fromId String
+  from   Article @relation("RelatedFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId   String
+  to     Article @relation("RelatedTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@id([fromId, toId])
+  @@index([toId])
+  @@map("article_relations")
+}
+
+model ContentReview {
+  id         String    @id @default(cuid())
+  articleId  String?
+  article    Article?  @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  faqId      String?
+  faq        Faq?      @relation(fields: [faqId], references: [id], onDelete: Restrict)
+  revision   Int
+  reviewerId String
+  reviewer   AdminUser @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+  decision   String
+  checklist  Json
+  note       String
+  createdAt  DateTime  @default(now())
+
+  @@unique([articleId, revision])
+  @@unique([faqId, revision])
+  @@index([reviewerId, createdAt])
+  @@map("content_reviews")
+}
+
+model LoanProduct {
+  id             String        @id @default(cuid())
+  name           String        @unique
+  category       String
+  targetCustomer String
+  description    String
+  requirements   Json
+  status         ContentStatus @default(DRAFT)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, category])
+  @@map("loan_products")
+}
+
+// Supporting infrastructure; cookies hold only an encrypted opaque token.
+model AdminSession {
+  id             String    @id @default(cuid())
+  tokenHash      String    @unique
+  adminId        String
+  sessionVersion Int       @default(0)
+  admin          AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  expiresAt      DateTime
+  createdAt      DateTime  @default(now())
+
+  @@index([adminId])
+  @@index([expiresAt])
+  @@map("admin_sessions")
+}
+
+model RateLimitBucket {
+  key       String   @id
+  count     Int      @default(1)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("rate_limit_buckets")
+}
+
+model SubmissionGuard {
+  key       String   @id
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("submission_guards")
+}
+
+// First-party opt-in measurement: no raw IP, full referrer, customer or device fingerprint.
+model ContentEvent {
+  id            String   @id
+  dedupeKey     String   @unique
+  type          String
+  articleId     String?
+  article       Article? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  faqId         String?
+  faq           Faq?     @relation(fields: [faqId], references: [id], onDelete: SetNull)
+  contentKey    String
+  path          String
+  channel       String
+  sessionKey    String
+  policyVersion String
+  day           DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([day, contentKey, type])
+  @@index([sessionKey, contentKey, type])
+  @@index([createdAt])
+  @@map("content_events")
+}
+
+model ContentDailyMetric {
+  id                    String   @id @default(cuid())
+  day                   DateTime
+  contentKey            String
+  articleId             String?
+  article               Article? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  faqId                 String?
+  faq                   Faq?     @relation(fields: [faqId], references: [id], onDelete: SetNull)
+  path                  String
+  channel               String
+  pv                    Int      @default(0)
+  visits                Int      @default(0)
+  clicks                Int      @default(0)
+  convertedVisits       Int      @default(0) @map("measuredConsultations")
+  updatedAt             DateTime @updatedAt
+
+  @@unique([day, contentKey, channel])
+  @@index([articleId, day])
+  @@index([faqId, day])
+  @@map("content_daily_metrics")
+}
+
+model LeadAttribution {
+  id           String   @id @default(cuid())
+  leadId       String   @unique
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  articleId    String?
+  article      Article? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  faqId        String?
+  faq          Faq?     @relation(fields: [faqId], references: [id], onDelete: SetNull)
+  sourceType   String
+  contentTitle String?
+  path         String
+  channel      String
+  confidence   String
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  sessionKey   String?
+  measured     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([articleId, createdAt])
+  @@index([faqId, createdAt])
+  @@index([channel, createdAt])
+  @@map("lead_attributions")
+}
+
+model SearchPlatformConnection {
+  id             String                    @id @default(cuid())
+  platform       String
+  siteUrl        String
+  label          String
+  isActive       Boolean                   @default(true)
+  mode           String                    @default("CSV_ONLY")
+  createdById    String?
+  createdBy      AdminUser?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  lastImportedAt DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  metrics        SearchPerformanceMetric[]
+  jobs           AnalyticsSyncJob[]
+
+  @@unique([platform, siteUrl])
+  @@map("search_platform_connections")
+}
+
+model SearchPerformanceMetric {
+  id              String                   @id @default(cuid())
+  connectionId    String
+  connection      SearchPlatformConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  day             DateTime
+  dimension       String                   @default("site-daily-web")
+  clicks          Int
+  impressions     Int
+  averagePosition Float?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@unique([connectionId, day, dimension])
+  @@index([day])
+  @@map("search_performance_metrics")
+}
+
+model GeoVisibilityObservation {
+  id             String    @id @default(cuid())
+  platform       String
+  query          String
+  observedOn     DateTime
+  brandMention   Boolean
+  siteCitation   Boolean
+  recommendation Boolean
+  articleId      String?
+  article        Article?  @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  evidenceUrl    String
+  evidenceNote   String
+  actorId        String
+  actor          AdminUser @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt      DateTime  @default(now())
+
+  @@index([observedOn, platform])
+  @@index([articleId])
+  @@map("geo_visibility_observations")
+}
+
+model AnalyticsSyncJob {
+  id           String                   @id @default(cuid())
+  connectionId String
+  connection   SearchPlatformConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  actorId      String?
+  actor        AdminUser?               @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  kind         String
+  status       String
+  inputHash    String?
+  result       Json?
+  createdAt    DateTime                 @default(now())
+  completedAt  DateTime?
+
+  @@index([connectionId, createdAt])
+  @@map("analytics_sync_jobs")
+}
+
+model DeploymentWriteLock {
+ id Int @id
+ epoch Int @default(0)
+ @@map("deployment_write_lock")
+}

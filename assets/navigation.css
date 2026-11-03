@@ -1,0 +1,31 @@
+/* Shared shell: navigation styles live here, business-page styles in style.css. */
+.site-header{height:80px;position:sticky;top:0;z-index:30;background:#fff;border-bottom:1px solid #e6eaf0;box-shadow:0 3px 14px #0a162808}
+.nav-shell{display:flex;height:100%;align-items:center;justify-content:space-between;gap:24px}
+.logo{display:inline-flex;align-items:center;gap:11px;flex-shrink:0;white-space:nowrap}
+.logo-mark{width:42px;height:42px;display:grid;place-items:center;background:var(--navy);color:var(--goldlight);font-family:serif;font-size:27px;font-weight:700;border-radius:4px;box-shadow:inset -4px -4px 0 #2c4560}
+.logo-copy{display:flex;flex-direction:column;line-height:1.1;gap:5px}
+.logo-copy b{font-size:22px;letter-spacing:3px}
+.logo-copy small{font-size:8px;letter-spacing:2.1px;color:#768298}
+.main-nav{display:flex;align-items:center;justify-content:center;gap:16px;margin-left:0;white-space:nowrap}
+.main-nav a{color:#526071;font-size:14px;font-weight:600;padding:10px 0;transition:color .2s}
+.main-nav a:hover,.main-nav a.current{color:#967436}
+.main-nav a.current{text-decoration:underline;text-decoration-color:var(--gold);text-underline-offset:8px}
+.nav-cta{flex-shrink:0;background:var(--navy);color:var(--goldlight);padding:11px 17px;font-size:14px;white-space:nowrap;border-radius:4px}
+.nav-cta span{margin-left:8px;color:var(--gold)}
+.menu-toggle{display:none}
+/* 1240px leaves room for 10 labels at 14px, brand, CTA and gaps. JS also
+   measures the actual fit when menu configuration or font metrics change. */
+@media(max-width:1240px){.site-header{height:72px}.site-header .nav-shell{gap:16px}.site-header .menu-toggle{display:flex}.site-header .main-nav{display:none}}
+.site-header.nav-collapsed .main-nav{display:none}
+.site-header.nav-collapsed .menu-toggle{display:flex}
+.site-header .menu-toggle{background:none;border:0;flex-direction:column;justify-content:center;gap:5px;padding:10px;flex-shrink:0}
+.menu-toggle span{display:block;width:23px;height:2px;background:#152640}
+@media(max-width:1240px){.site-header .nav-cta{margin-left:auto}}
+.site-header.nav-collapsed .nav-cta{margin-left:auto}
+.site-header .main-nav.open{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));position:absolute;top:100%;left:0;right:0;margin:0;background:#fff;box-shadow:0 18px 30px #10213d20;padding:16px 24px;gap:0;max-height:calc(100dvh - 80px);overflow-y:auto;overscroll-behavior:contain;white-space:normal}
+.site-header .main-nav.open a{padding:12px 16px;font-size:14px;white-space:nowrap}
+/* Offscreen intrinsic measurement never affects the page's scroll width. */
+.site-header .main-nav.nav-measure{display:flex!important;position:fixed!important;top:0!important;left:0!important;right:auto!important;width:max-content!important;max-height:none!important;visibility:hidden!important;transform:translateX(-200%);padding:0!important;gap:16px!important;overflow:visible!important}
+.site-header .main-nav.nav-measure a{padding:10px 0!important;font-size:14px!important;white-space:nowrap!important}
+@media(max-width:767px){.site-header{height:72px}.site-header .nav-shell{gap:10px}.logo-mark{width:38px;height:38px}.logo-copy b{font-size:20px}.nav-cta{padding:10px;font-size:13px}.site-header .main-nav.open{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px 18px}.site-header .main-nav.open a{padding:12px 8px}}
+html{scroll-padding-top:90px}

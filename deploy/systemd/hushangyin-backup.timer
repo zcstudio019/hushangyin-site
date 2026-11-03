@@ -1,0 +1,9 @@
+[Unit]
+Description=Hushangyin daily encrypted backup
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Shanghai
+RandomizedDelaySec=180
+Persistent=true
+Unit=hushangyin-backup.service
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+/var/log/nginx/hushangyin-access.log /var/log/nginx/hushangyin-error.log /var/log/nginx/hushangyin-preview.log {
+  daily
+  rotate 14
+  missingok
+  notifempty
+  compress
+  delaycompress
+  sharedscripts
+  postrotate
+    if test -s /run/nginx.pid; then kill -USR1 "$(cat /run/nginx.pid)"; fi
+  endscript
+}

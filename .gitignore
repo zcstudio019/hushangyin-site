@@ -1,0 +1,12 @@
+node_modules/
+.local-postgres/
+.next/
+.npm-cache/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.tsbuildinfo
+backups/
+test-results/
+playwright-report/

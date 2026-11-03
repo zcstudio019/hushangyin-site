@@ -6,10 +6,11 @@ Type=simple
 User=hushangyin
 Group=hushangyin
 WorkingDirectory=/opt/hushangyin/current
+# Node path: /etc/hushangyin/runtime.env, read by run-runtime.sh
 EnvironmentFile=/etc/hushangyin/app.env
-Environment=NODE_OPTIONS=--max-old-space-size=384
-ExecCondition=/usr/bin/node -e "process.exit(process.env.GEO_WORKER_ENABLED==='true'?0:1)"
-ExecStart=/usr/bin/node --conditions=react-server --import tsx scripts/geo-generation-worker.ts
+Environment=NODE_OPTIONS=--max-old-space-size=256
+ExecCondition=/bin/bash /opt/hushangyin/current/deploy/ecs/run-runtime.sh node -e "process.exit(process.env.GEO_WORKER_ENABLED==='true'?0:1)"
+ExecStart=/bin/bash /opt/hushangyin/current/deploy/ecs/run-runtime.sh node --conditions=react-server --import tsx scripts/geo-generation-worker.ts
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=120
@@ -21,8 +22,8 @@ ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/hushangyin
 InaccessiblePaths=-/etc/hushangyin/backup.key -/etc/hushangyin/ossutil.conf -/var/backups/hushangyin
-MemoryHigh=384M
-MemoryMax=512M
+MemoryHigh=256M
+MemoryMax=384M
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=hushangyin-worker

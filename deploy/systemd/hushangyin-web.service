@@ -8,9 +8,10 @@ Type=simple
 User=hushangyin
 Group=hushangyin
 WorkingDirectory=/opt/hushangyin/current
+# Node path: /etc/hushangyin/runtime.env, read by run-runtime.sh
 EnvironmentFile=/etc/hushangyin/app.env
-Environment=NODE_OPTIONS=--max-old-space-size=1024
-ExecStart=/usr/bin/node scripts/start-platform.mjs
+Environment=NODE_OPTIONS=--max-old-space-size=512
+ExecStart=/bin/bash /opt/hushangyin/current/deploy/ecs/run-runtime.sh node scripts/start-platform.mjs
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
@@ -27,8 +28,8 @@ RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/var/lib/hushangyin /var/cache/hushangyin
 InaccessiblePaths=-/etc/hushangyin/backup.key -/etc/hushangyin/ossutil.conf -/var/backups/hushangyin
-MemoryHigh=768M
-MemoryMax=1200M
+MemoryHigh=640M
+MemoryMax=896M
 TasksMax=100
 StandardOutput=journal
 StandardError=journal

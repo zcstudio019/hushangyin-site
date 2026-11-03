@@ -10,7 +10,14 @@ command -v vmstat >/dev/null && vmstat 1 5
 ps -eo pid,comm,pcpu,pmem,rss --sort=-rss | head -n 16
 section 'Node/npm/OpenSSL/SQLite tools'
 for tool in node npm openssl sqlite3; do command -v "$tool" || true; done
-node --version 2>/dev/null || true; npm --version 2>/dev/null || true; openssl version 2>/dev/null || true
+# Global version is intentionally read-only; it is never used to deploy this application.
+/usr/bin/node --version 2>/dev/null || true
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ -f "$here/run-runtime.sh" ]]; then
+  bash "$here/run-runtime.sh" node --version || true
+  bash "$here/run-runtime.sh" npm --version || true
+fi
+openssl version 2>/dev/null || true
 section 'Listening ports (no process arguments)'
 ss -lntup 2>/dev/null || true
 section 'Services and timers (no EnvironmentFile contents)'

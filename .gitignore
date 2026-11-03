@@ -10,3 +10,6 @@ __pycache__/
 backups/
 test-results/
 playwright-report/
+docs/legacy-audit.json
+tests/browser-results.json
+tests/protected-content.json

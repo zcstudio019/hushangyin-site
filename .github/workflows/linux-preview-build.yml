@@ -20,6 +20,7 @@ jobs:
         shell: bash
     env:
       CI: "true"
+      PRISMA_CLI_BINARY_TARGETS: debian-openssl-3.0.x
       NEXT_TELEMETRY_DISABLED: "1"
       SITE_URL: http://127.0.0.1:3120
       DATABASE_PROVIDER: sqlite
@@ -59,11 +60,24 @@ jobs:
       - name: Test release filtering and symlink boundaries
         run: node --test deploy/ci/package.test.mjs
 
+      - name: Install and detect system OpenSSL 3 on CI runner only
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openssl libssl3
+          openssl version
+          ldconfig -p | grep 'libssl.so.3'
+
       - name: Install locked Linux dependencies
         run: npm ci --include=dev --no-audit --no-fund
 
+      - name: Detect Prisma platform and strictly prefetch CLI OpenSSL3 engines
+        run: node deploy/ci/prisma-engines.mjs prepare
+
       - name: Build without database or production credentials
         run: npm run build
+
+      - name: Verify CLI and all three generated OpenSSL3 clients
+        run: node deploy/ci/prisma-engines.mjs check
 
       - name: Package isolated Linux release
         id: package
@@ -73,6 +87,9 @@ jobs:
 
       - name: Verify extracted artifact and fail-closed runtime
         run: node deploy/ci/smoke-release.mjs '${{ steps.package.outputs.archive }}'
+
+      - name: Verify root-owned readonly artifact as ordinary user with no network
+        run: node deploy/ci/prisma-readonly.mjs '${{ steps.package.outputs.archive }}'
 
       - name: Upload downloadable release and SHA256
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -93,5 +110,5 @@ jobs:
             echo '## 沪上银私有预发布构建完成'
             echo "发布包：\`$ARCHIVE_NAME\`，含 SHA256，保留 7 天。"
             echo 'Ubuntu 22.04 x64 / Node.js 24.22.2 / SITE_URL=http://127.0.0.1:3120'
-            echo '未连接业务数据库，未部署 ECS，未执行迁移；下载后须另行人工验收。'
+            echo '只读包以普通用户完成离线Prisma验证和一次性SQLite迁移测试；未操作业务数据库或ECS。'
           } >> "$GITHUB_STEP_SUMMARY"

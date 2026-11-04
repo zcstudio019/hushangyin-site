@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { assertPrismaBundle, target } from "./prisma-engines.mjs";
 import path from "node:path";
 import os from "node:os";
 import assert from "node:assert/strict";
@@ -132,6 +133,7 @@ export function verifyTree(root) {
       );
     }
   }
+  assertPrismaBundle(root);
   return count;
 }
 export async function packageRelease(source = process.cwd()) {
@@ -175,6 +177,7 @@ export async function packageRelease(source = process.cwd()) {
           node: process.versions.node,
           platform: process.platform,
           arch: process.arch,
+          prismaBinaryTarget: target,
           siteUrl: process.env.SITE_URL,
           includesDatabase: false,
           includesSecrets: false,

@@ -4,6 +4,55 @@ import os from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { allowed, verifyTree, entries } from "./package-release.mjs";
+import {
+  assertPrismaBundle,
+  clientDirectories,
+  library,
+  schemaEngine,
+  target,
+} from "./prisma-engines.mjs";
+
+test("OpenSSL1.1-only CLI or any missing OpenSSL3 client engine must fail packaging", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "hsy-engine-test-"));
+  const header = Buffer.alloc(20);
+  header.write("\x7fELF");
+  header[4] = 2;
+  header[5] = 1;
+  header.writeUInt16LE(62, 18);
+  const write = (name, value = header) => {
+    const file = path.join(root, name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, value, { mode: 0o755 });
+  };
+  try {
+    write("node_modules/@prisma/engines/schema-engine-debian-openssl-1.1.x");
+    assert.throws(
+      () => assertPrismaBundle(root),
+      /OpenSSL3 Prisma engine missing/,
+    );
+    write("node_modules/@prisma/engines/" + schemaEngine);
+    write("node_modules/@prisma/engines/" + library);
+    for (const client of clientDirectories) {
+      write("node_modules/" + client + "/" + library);
+      write(
+        "node_modules/" + client + "/schema.prisma",
+        'binaryTargets = ["' + target + '"]',
+      );
+    }
+    assertPrismaBundle(root);
+    for (const client of clientDirectories) {
+      const file = path.join(root, "node_modules", client, library);
+      fs.unlinkSync(file);
+      assert.throws(
+        () => assertPrismaBundle(root),
+        /OpenSSL3 Prisma engine missing/,
+      );
+      fs.writeFileSync(file, header);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("private files, database files, cache and test artifacts are excluded; runtime inputs stay", () => {
   for (const value of [

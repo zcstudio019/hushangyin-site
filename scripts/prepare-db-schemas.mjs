@@ -1,6 +1,16 @@
 // PostgreSQL stays the authoritative local schema; provider copies are deterministic.
 import fs from "node:fs";
+import assert from "node:assert/strict";
 const original = fs.readFileSync("prisma/schema.prisma", "utf8");
+// Generator policy lives only in the canonical schema and is copied unchanged.
+const generator =
+  original.match(/generator\s+client\s*\{([\s\S]*?)\}/)?.[1] || "";
+assert.match(
+  generator,
+  /binaryTargets\s*=\s*\[[^\]]*"native"[^\]]*"debian-openssl-3\.0\.x"[^\]]*\]/,
+  "Canonical generator must retain local native and ECS OpenSSL3 engines",
+);
+assert.match(generator, /engineType\s*=\s*"library"/);
 for (const provider of ["sqlite", "mysql"]) {
   let schema = original
     .replace(

@@ -1,6 +1,8 @@
 generator client {
   provider = "prisma-client-js"
   output = "../../node_modules/@hsy/sqlite-client"
+  engineType = "library"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

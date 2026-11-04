@@ -1,5 +1,7 @@
 # GitHub Actions Linux 私有预发布构建
 
+**2026-11-04 OpenSSL3修正：工作流现要求CLI及三个客户端目标引擎完整，并在上传前以普通用户完成只读、断网的一次性SQLite验收。参见[最新修复报告](PRISMA_OPENSSL3_READONLY_RELEASE_FIX_REPORT.md)。下面2026-11-03测试记录为历史基线，不能代替新门禁。**
+
 日期：2026-11-03。仓库：`zcstudio019/hushangyin-site`。
 
 本次只新增构建、打包、校验和文档文件。没有更改package.json、锁文件、Next.js配置、业务代码、数据库Schema、ECS部署脚本、Nginx或systemd；没有推送GitHub、触发远程Actions、连接ECS、执行数据库迁移或修改现有SQLite。
@@ -35,8 +37,8 @@
 - `npm ci --include=dev --no-audit --no-fund`，然后原样`npm run build`。不修改锁文件以绕过版本问题。
 - GitHub Token仅contents:read，checkout不持久化Git凭据；不引用仓库生产Secrets、SSH私钥、RDS地址、AI Key或生产数据库。
 - 数据库连接、会话密钥、模型密钥显式空值；咨询、分析、AI外发、Worker与生产批准开关关闭。检查失败就停止，不注入默认管理员或硬编码凭据。
-- 无数据库服务容器、迁移、seed、备份恢复、SSH、scp、DNS、Nginx或systemd执行步骤。
-- 仅成功构建、打包和解压冒烟通过后上传.tar.gz及.sha256；保留7天，不自动创建GitHub Release或部署ECS。私有仓库Artifact仍是私有源码产物，应限制仓库访问权限。[GitHub Artifact保留期说明](https://docs.github.com/en/actions/tutorials/store-and-share-data)。
+- 无业务数据库服务、业务迁移、seed、备份恢复、SSH、scp、DNS、Nginx或systemd执行步骤；2026-11-04起新增离线临时SQLite迁移验收，仅使用新建合成测试库。
+- 仅成功构建、引擎完整性、打包、解压冒烟及普通用户只读离线验收全部通过后上传.tar.gz及.sha256；保留7天，不自动创建GitHub Release或部署ECS。私有仓库Artifact仍是私有源码产物，应限制仓库访问权限。[GitHub Artifact保留期说明](https://docs.github.com/en/actions/tutorials/store-and-share-data)。
 
 不使用本地已有node_modules/.next或缓存；预检拒绝checkout中的这些本地状态。环境模板的密码/SECRET/API_KEY必须为空。过滤和干净构建降低误带入风险，但不能替代对提交源码的敏感信息审查；不要把客户资料或硬编码密钥提交到任何源码文件。
 
@@ -141,6 +143,7 @@ assert.equal(m.commit,process.argv[2]);assert.equal(m.workflowRun,process.argv[3
 assert.equal(m.purpose,"private-preview-only");assert.equal(m.platform,"linux");
 assert.equal(m.arch,"x64");assert.equal(m.node,"24.22.2");
 assert.equal(m.siteUrl,"http://127.0.0.1:3120");
+assert.equal(m.prismaBinaryTarget,"debian-openssl-3.0.x");
 console.log("发布清单与目标构建匹配");' "$STAGE/release/RELEASE_MANIFEST.json" "$EXPECTED_COMMIT" "$RUN_ID"
 # 上述任何校验失败均停止，保留临时目录供排查，不激活产物。
 sudo mv -Tn "$STAGE/release" "$TARGET"

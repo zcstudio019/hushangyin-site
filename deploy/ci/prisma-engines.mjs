@@ -27,6 +27,7 @@ export async function checkPlatform(root = process.cwd()) {
       prismaTarget: info.binaryTarget,
       prismaLibssl: info.libssl,
       prismaDistro: info.targetDistro,
+      prismaOriginalDistro: info.originalDistro,
       nodeOpenSSL: process.versions.openssl,
     }),
   );

@@ -9,6 +9,15 @@ import { verifyTree } from "./package-release.mjs";
 assert.equal(process.platform, "linux");
 assert.equal(process.arch, "x64");
 const archive = path.resolve(process.argv[2]);
+const outerNetwork = process.argv[3];
+if (outerNetwork) {
+  assert.equal(
+    process.getuid(),
+    0,
+    "Offline container must manage the extracted release as root",
+  );
+  assert.match(outerNetwork, /^net:\[\d+\]$/);
+}
 assert.ok(fs.statSync(archive).isFile());
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "hsy-readonly-"));
 const release = path.join(temporary, "release"),
@@ -66,11 +75,8 @@ try {
   privileged("chown", ["-R", "0:0", release]);
   privileged("chmod", ["-R", "a-w", release]);
   const before = await fingerprint(release),
-    parentNetwork = fs.readlinkSync("/proc/self/ns/net");
+    parentNetwork = outerNetwork ?? fs.readlinkSync("/proc/self/ns/net");
   const args = [
-    "--net",
-    "--",
-    "setpriv",
     `--reuid=${uid}`,
     `--regid=${gid}`,
     "--clear-groups",
@@ -83,8 +89,10 @@ try {
     parentNetwork,
   ];
   const result = spawnSync(
-    root ? "unshare" : "sudo",
-    root ? args : ["-n", "unshare", ...args],
+    outerNetwork ? "setpriv" : root ? "unshare" : "sudo",
+    outerNetwork
+      ? args
+      : [...(root ? [] : ["-n", "unshare"]), "--net", "--", "setpriv", ...args],
     {
       cwd: release,
       env: {

@@ -23,7 +23,8 @@
 |---|---|
 | `.github/workflows/linux-preview-build.yml` | 手动触发Ubuntu22.04 x64 / Node24.22.2构建，打包后上传Artifact |
 | `deploy/ci/preflight.mjs` | 检查精确运行时、空数据库/密钥、关闭外部服务、干净checkout及源目录私密文件 |
-| `deploy/ci/package-release.mjs` | 白名单拷贝、排除私密数据/缓存、检查相对链接和Linux引擎、生成清单、压缩包和SHA256 |
+| `deploy/ci/package-release.mjs` | 白名单拷贝、排除私密数据/缓存、检查相对链接和Linux引擎、生成候选压缩包 |
+| `deploy/ci/Dockerfile`、`deploy/ci/build-linux-preview.sh` | 在独立Ubuntu22.04容器构建和断网验收，通过后生成发布包SHA256 |
 | `deploy/ci/package.test.mjs` | 隔离夹具测试过滤、必需文件和符号链接边界，不接触业务数据 |
 | `deploy/ci/smoke-release.mjs` | 解压真正的发布包，验证Linux原生依赖、三客户端、Worker配置入口、无DB启动与robots |
 | 本文档 | 运行、验收事实与ECS安全安装说明 |
@@ -32,7 +33,7 @@
 
 在GitHub **Actions → Linux private preview release → Run workflow** 手动运行。工作流文件需先提交到默认分支才能显示手动入口。没有push/PR自动部署触发器，不使用pull_request_target；仅目标仓库可运行构建job。
 
-- `ubuntu-22.04`标准x64 runner，与Ubuntu22.04/glibc目标对齐；不使用ubuntu-latest或ARM runner。
+- `ubuntu-22.04` x64 Runner 调度构建和上传。Prisma 和 Next.js 在独立的 Ubuntu 22.04 amd64 容器中执行，包内 OpenSSL 使用 3.0.x。
 - 固定Node24.22.2。第三方Actions均来自官方actions仓库并固定完整提交SHA；应用Node版本不依赖Actions自身的内部运行时。
 - `npm ci --include=dev --no-audit --no-fund`，然后原样`npm run build`。不修改锁文件以绕过版本问题。
 - GitHub Token仅contents:read，checkout不持久化Git凭据；不引用仓库生产Secrets、SSH私钥、RDS地址、AI Key或生产数据库。

@@ -1,5 +1,27 @@
 # Prisma OpenSSL3 引擎与只读发布包修复报告
 
+## Commit 3c5c658 后续修复
+
+旧工作流在 `npm ci` 前要求 `ldconfig -p` 找到 `libssl.so.3`。此次已运行到 Prisma 检查，且 `getPlatformInfo()` 返回了 `libssl: 1.1.x`。Prisma 6.19.3 先扫描 `/usr/lib/x86_64-linux-gnu` 和 `/lib/x86_64-linux-gnu`，取目录中首个符合条件的库名，再查动态链接器缓存和通用库目录，最后才调用 `openssl`。因此系统命令是 OpenSSL 3.0.2、Node 自带 OpenSSL 3.5.9 时，Prisma 仍可以选中 1.1。`libssl: 1.1.x` 是实际探测结果，默认回退时这个字段为空。旧日志未记录选中的路径，也无法据此确定 1.1 文件由哪个软件包引入。
+
+本地用两个独立 Node 进程复现了选择过程。临时 Jammy 容器只有 `libssl.so.3` 时，Prisma 6.19.3 识别 `debian-openssl-3.0.x`。在容器的多架构库目录加入一个名为 `libssl.so.1.1` 的空文件夹具后，`openssl version` 仍为 3.0.2，Prisma 改为 `debian-openssl-1.1.x`。该夹具仅用于复现文件名探测，没有加载 1.1 二进制，测试容器已销毁。
+
+GitHub Runner 现在只做宿主 OpenSSL 库清单诊断、源码归档和上传。`deploy/ci/Dockerfile` 从 Ubuntu 22.04 amd64 安装 OpenSSL 3，并用仓库已有的官方 SHA256 校验值安装 Node 24.22.2。`deploy/ci/build-linux-preview.sh` 在该镜像内检查动态链接器缓存与 Debian 多架构库目录，再运行 Prisma 平台探测、引擎预取、客户端生成和 Next.js 构建。Docker 容器有独立的系统库目录，Runner 上的 1.1 文件不会参与这些探测。
+
+另一个同镜像容器通过 `--network none` 验收只读挂载的候选压缩包。容器内 root 管理解压目录，Prisma 校验、临时 SQLite 迁移和 CRUD 以 UID 65534 执行，继续核对外部网络接口、namespace、文件指纹与引擎。候选包通过所有检查后，脚本才将其复制到发布目录并生成和复核 SHA256，上传步骤依赖该脚本成功。
+
+涉及文件为工作流 `.github/workflows/linux-preview-build.yml`、新增 `deploy/ci/Dockerfile` 和 `deploy/ci/build-linux-preview.sh`，以及 `deploy/ci/package-release.mjs`、`deploy/ci/prisma-engines.mjs`、`deploy/ci/prisma-readonly.mjs`、`deploy/ci/prisma-readonly-child.mjs`、构建指南和本报告。
+
+提交这些文件后，从包含修复的新 commit 手动运行 `Linux private preview release`。检查宿主库清单、容器的 `prismaTarget`、只读验收结果及 SHA256，然后下载该次运行的 Artifact。重跑旧 commit 会继续使用旧流程。
+
+本地 WSL Docker 已实际跑完共用构建脚本。Ubuntu 22.04 amd64 容器的系统 OpenSSL 为 3.0.2，Node 24.22.2 下载包的 SHA256 校验通过，Prisma 6.19.3 在构建与断网容器中均识别 `debian-openssl-3.0.x`。四项打包门禁测试、三个客户端及 CLI 引擎检查、`npm run build`、普通用户 Schema validate、临时 SQLite 两次迁移和真实 CRUD 全部通过。整包指纹一致，最终 `sha256sum --check` 返回 `OK`。
+
+本机 Docker Hub 直拉遇到 IPv6 连接失败，改用 IPv4 下载并校验官方 Jammy manifest 与镜像层后导入。本地验收使用该 Jammy 根文件系统。GitHub Actions 尚未执行，托管 Runner 的镜像拉取和 Artifact 上传仍需由新 commit 的运行验证。
+
+参考 [Docker none 网络驱动](https://docs.docker.com/engine/network/drivers/none/) 和 [Prisma 同类平台识别记录](https://github.com/prisma/prisma/issues/25899)。以下原报告保留前一轮的修复和验证记录。
+
+---
+
 日期：2026-11-04。目标：Ubuntu22.04 x86_64 / Node24.22.2 / Prisma6.19.3。
 
 **结果：本地隔离Linux构建、完整打包和普通用户只读离线Prisma验收通过；GitHub托管runner及ECS新包尚未执行。** 本轮未连接ECS或真实业务库，未修改systemd、Nginx、独立Node安装、业务代码或数据库表/迁移历史。

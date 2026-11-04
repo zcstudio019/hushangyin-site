@@ -18,78 +18,17 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      CI: "true"
-      PRISMA_CLI_BINARY_TARGETS: debian-openssl-3.0.x
-      NEXT_TELEMETRY_DISABLED: "1"
-      SITE_URL: http://127.0.0.1:3120
-      DATABASE_PROVIDER: sqlite
-      DATABASE_URL: ""
-      SQLITE_DATABASE_URL: ""
-      MYSQL_DATABASE_URL: ""
-      TEST_DATABASE_URL: ""
-      SESSION_SECRET: ""
-      RATE_LIMIT_SECRET: ""
-      AI_API_KEY: ""
-      OPENAI_API_KEY: ""
-      AI_GENERATION_ENABLED: "false"
-      AI_EXTERNAL_TRANSMISSION_APPROVED: "false"
-      GEO_WORKER_ENABLED: "false"
-      CONSULTATIONS_ENABLED: "false"
-      PRODUCTION_CONSULTATIONS_APPROVED: "false"
-      ANALYTICS_ENABLED: "false"
-      ANALYTICS_PRODUCTION_APPROVED: "false"
-      MYSQL_PRODUCTION_APPROVED: "false"
-      LOCAL_TEST_MODE: "false"
     steps:
       - name: Checkout without persistent Git credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
-      - name: Set up exact application Node.js version
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "24.22.2"
-          architecture: x64
-          check-latest: false
-
-      - name: Check clean source and disabled external services
-        run: node deploy/ci/preflight.mjs
-
-      - name: Test release filtering and symlink boundaries
-        run: node --test deploy/ci/package.test.mjs
-
-      - name: Install and detect system OpenSSL 3 on CI runner only
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openssl libssl3
-          openssl version
-          ldconfig -p | grep 'libssl.so.3'
-
-      - name: Install locked Linux dependencies
-        run: npm ci --include=dev --no-audit --no-fund
-
-      - name: Detect Prisma platform and strictly prefetch CLI OpenSSL3 engines
-        run: node deploy/ci/prisma-engines.mjs prepare
-
-      - name: Build without database or production credentials
-        run: npm run build
-
-      - name: Verify CLI and all three generated OpenSSL3 clients
-        run: node deploy/ci/prisma-engines.mjs check
-
-      - name: Package isolated Linux release
+      - name: Build and verify release in isolated Ubuntu 22.04 containers
         id: package
-        env:
-          HSY_ARTIFACT_DIR: ${{ runner.temp }}/hushangyin-artifacts
-        run: node deploy/ci/package-release.mjs
-
-      - name: Verify extracted artifact and fail-closed runtime
-        run: node deploy/ci/smoke-release.mjs '${{ steps.package.outputs.archive }}'
-
-      - name: Verify root-owned readonly artifact as ordinary user with no network
-        run: node deploy/ci/prisma-readonly.mjs '${{ steps.package.outputs.archive }}'
+        run: |
+          git archive --format=tar --output="$RUNNER_TEMP/hsy-source.tar" HEAD
+          bash deploy/ci/build-linux-preview.sh "$RUNNER_TEMP/hsy-source.tar" "$RUNNER_TEMP/hushangyin-artifacts"
 
       - name: Upload downloadable release and SHA256
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

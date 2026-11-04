@@ -136,7 +136,7 @@ export function verifyTree(root) {
   assertPrismaBundle(root);
   return count;
 }
-export async function packageRelease(source = process.cwd()) {
+export function packageRelease(source = process.cwd()) {
   assert.equal(process.platform, "linux");
   assert.equal(process.arch, "x64");
   assert.equal(process.versions.node, "24.22.2");
@@ -193,10 +193,9 @@ export async function packageRelease(source = process.cwd()) {
     );
     fs.mkdirSync(out, { recursive: true });
     const filename = `hushangyin-preview-${commit.slice(0, 12)}-${run}.tar.gz`,
-      archive = path.join(out, filename),
-      checksum = archive + ".sha256";
+      archive = path.join(out, filename);
     assert.ok(
-      !fs.existsSync(archive) && !fs.existsSync(checksum),
+      !fs.existsSync(archive),
       "Artifact already exists; refusing overwrite",
     );
     const tar = spawnSync(
@@ -205,17 +204,6 @@ export async function packageRelease(source = process.cwd()) {
       { stdio: "inherit" },
     );
     assert.equal(tar.status, 0, "Release compression failed");
-    const digest = createHash("sha256");
-    for await (const chunk of fs.createReadStream(archive))
-      digest.update(chunk);
-    fs.writeFileSync(checksum, `${digest.digest("hex")}  ${filename}\n`, {
-      flag: "wx",
-    });
-    if (process.env.GITHUB_OUTPUT)
-      fs.appendFileSync(
-        process.env.GITHUB_OUTPUT,
-        `archive=${archive}\nchecksum=${checksum}\nfilename=${filename}\n`,
-      );
     console.log(
       JSON.stringify({
         filename,
@@ -224,7 +212,7 @@ export async function packageRelease(source = process.cwd()) {
         databaseIncluded: false,
       }),
     );
-    return { archive, checksum };
+    return archive;
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
   }
@@ -233,4 +221,4 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 )
-  await packageRelease();
+  packageRelease();

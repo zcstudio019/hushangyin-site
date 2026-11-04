@@ -35,6 +35,8 @@ for (const dir of [
   ...clientDirectories.map((d) => path.join(release, "node_modules", d)),
 ])
   assert.throws(() => fs.accessSync(dir, fs.constants.W_OK));
+process.env.HOME = path.join(runtime, "home");
+process.env.XDG_CACHE_HOME = path.join(process.env.HOME, "cache");
 process.chdir(release);
 await checkPlatform(release);
 assertPrismaBundle(release);

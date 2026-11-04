@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 # Existing Linux-built release only. Never uploads, changes DNS, enables public Nginx or resets a DB.
 set -euo pipefail
+stage='initialization'
+trap 'status=$?; printf "Preview deployment failed during %s (exit %s).\n" "$stage" "$status" >&2; exit "$status"' ERR
 [[ ${EUID} -eq 0 && ${APPROVE_HSY_PREVIEW_DEPLOY:-false} == true ]] || { echo 'Explicit preview deployment approval required.'; exit 1; }
+stage='runtime preflight'
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$here/runtime-common.sh"
 hsy_runtime
+stage='release preflight'
 release=$(realpath -- "${1:?Pass an existing /opt/hushangyin/releases/<version> directory}")
-[[ "$release" == /opt/hushangyin/releases/* && -f "$release/.next/BUILD_ID" && -f /opt/hushangyin/.hsy-managed ]] || exit 1
+[[ "$release" == /opt/hushangyin/releases/* && -f "$release/.next/BUILD_ID" && -f /opt/hushangyin/.hsy-managed ]] || { echo 'Release preflight failed: expected a built release under the managed releases directory.' >&2; exit 1; }
 shopt -s nullglob
 for private in "$release"/.env "$release"/.env.* "$release"/.local-postgres "$release"/backups; do [[ "$private" == "$release/.env.example" ]] && continue; [[ ! -e "$private" && ! -L "$private" ]] || { echo 'Release contains private local material; refused.'; exit 1; }; done
 [[ -f /etc/hushangyin/app.env && -f /etc/hushangyin/backup.env ]] || { echo 'Private configuration missing.'; exit 1; }
 if systemctl is-active --quiet hushangyin-worker.service; then echo "Stop only this project worker through an approved maintenance window before deployment."; exit 1; fi
 # Refuse a listener from any other service, even if it happens to expose /api/health/.
+stage='port ownership check'
 listeners=$(ss -H -lntp '( sport = :3120 )')
 if [[ -n "$listeners" ]]; then
   group=$(systemctl show --property=ControlGroup --value hushangyin-web.service)
@@ -20,6 +25,7 @@ if [[ -n "$listeners" ]]; then
   [[ -n "$pids" ]] || { echo 'Cannot identify port owner; refused.'; exit 1; }
   while IFS= read -r pid; do awk -F: '{print $NF}' "/proc/$pid/cgroup" | grep -Fxq "$group" || { echo 'Port 3120 is owned by another service; refused.'; exit 1; }; done <<< "$pids"
 fi
+stage='private configuration and permissions check'
 cd -- "$release"
 # Only flags/paths are checked; values never printed. Prod intake/analysis must remain closed.
 runuser -u hushangyin -- /bin/bash "$release/deploy/ecs/run-runtime.sh" node --env-file=/etc/hushangyin/app.env -e '
@@ -38,22 +44,44 @@ fs.accessSync(path.dirname(databasePath),fs.constants.R_OK|fs.constants.W_OK|fs.
 if((fs.statSync(databasePath).mode&0o077)!==0||fs.statSync(databasePath).uid!==process.getuid())throw Error("Database must be owned by service user with mode 0600");
 for(const name of ["/etc/hushangyin/app.env","/etc/hushangyin/backup.env","/etc/hushangyin/runtime.env"])if((fs.statSync(name).mode&0o027)!==0)throw Error("Private environment file permissions too broad");
 if((process.env.SESSION_SECRET||"").length<32||(process.env.RATE_LIMIT_SECRET||"").length<32)throw Error("Secure configuration missing");'
-if [[ -e /opt/hushangyin/current && ! -L /opt/hushangyin/current ]]; then echo 'Current is not a managed symlink.'; exit 1; fi
-old=$(readlink -f /opt/hushangyin/current || true)
-[[ -z "$old" || "$old" == /opt/hushangyin/releases/* ]] || exit 1
+stage='current release check'
+old=''
+if [[ -L /opt/hushangyin/current ]]; then
+  if ! old=$(realpath -e -- /opt/hushangyin/current); then
+    echo 'Current release check failed: current is a broken or unresolvable symlink.' >&2
+    exit 1
+  fi
+  if [[ "$old" != /opt/hushangyin/releases/* ]]; then
+    echo 'Current release check failed: current points outside the managed releases directory.' >&2
+    exit 1
+  fi
+  if [[ ! -d "$old" || ! -f "$old/.next/BUILD_ID" ]]; then
+    echo 'Current release check failed: current does not point to a built release directory.' >&2
+    exit 1
+  fi
+elif [[ -e /opt/hushangyin/current ]]; then
+  echo 'Current release check failed: current exists and is not a symlink.' >&2
+  exit 1
+fi
+stage='SQLite backup'
 runuser -u hushangyin -- /bin/bash "$release/deploy/ecs/run-runtime.sh" node --env-file=/etc/hushangyin/backup.env scripts/sqlite-backup.mjs
+stage='SQLite migration'
 runuser -u hushangyin -- /bin/bash "$release/deploy/ecs/run-runtime.sh" node --env-file=/etc/hushangyin/app.env scripts/db-tool.mjs deploy sqlite
+stage='release activation'
 if [[ -d .next/cache && ! -L .next/cache ]]; then rmdir .next/cache || { echo 'Build cache must be empty or already shared; no recursive removal performed.'; exit 1; }; fi
 [[ -L .next/cache ]] || ln -s /var/cache/hushangyin .next/cache
 ln -s "$release" /opt/hushangyin/current.next
 mv -Tf /opt/hushangyin/current.next /opt/hushangyin/current
+stage='web service restart'
 systemctl daemon-reload
 systemctl restart hushangyin-web.service
 healthy=false
 for attempt in {1..20}; do if curl -fsS http://127.0.0.1:3120/api/health/ >/dev/null; then healthy=true; break; fi; sleep 1; done
 if [[ "$healthy" != true ]]; then
+  stage='rollback after failed health check'
   if [[ -n "$old" ]]; then ln -s "$old" /opt/hushangyin/current.rollback; mv -Tf /opt/hushangyin/current.rollback /opt/hushangyin/current; systemctl restart hushangyin-web.service; else systemctl stop hushangyin-web.service; fi
   echo 'Preview health failed. Application symlink reverted when possible; database was NOT restored/reset.'; exit 1
 fi
+stage='previous release recording'
 if [[ -n "$old" ]]; then ln -sfn "$old" /opt/hushangyin/previous; fi
 echo 'Private preview ready on loopback 3120. No DNS, firewall, public Nginx or worker was changed. Manual acceptance still required.'

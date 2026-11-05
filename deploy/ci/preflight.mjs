@@ -1,3 +1,4 @@
+import { releaseMode, releaseOrigins } from "./release-mode.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { allowed } from "./package-release.mjs";
@@ -10,7 +11,7 @@ assert.equal(
   "24.22.2",
   "Exact Node.js 24.22.2 required",
 );
-assert.equal(process.env.SITE_URL, "http://127.0.0.1:3120");
+assert.equal(process.env.SITE_URL, releaseOrigins[releaseMode()]);
 assert.equal(process.env.DATABASE_PROVIDER, "sqlite");
 assert.equal(process.env.LOCAL_TEST_MODE, "false");
 for (const key of [

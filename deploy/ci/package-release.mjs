@@ -1,3 +1,4 @@
+import { releaseMode, releaseOrigins } from "./release-mode.mjs";
 import fs from "node:fs";
 import { assertPrismaBundle, target } from "./prisma-engines.mjs";
 import path from "node:path";
@@ -65,9 +66,15 @@ export function allowed(relative) {
   if (/(?:^|\/)[^/]+\.test\.mjs$/.test(normalized)) return false;
   return true;
 }
-export function verifyTree(root) {
+export function verifyTree(root, { allowManagedCache = false } = {}) {
   let count = 0;
   function visit(relative) {
+    if (allowManagedCache && relative === ".next/cache") {
+      const cache = path.join(root, relative);
+      assert.ok(fs.lstatSync(cache).isSymbolicLink());
+      assert.equal(fs.readlinkSync(cache), "/var/cache/hushangyin/production");
+      return;
+    }
     assert.ok(allowed(relative), "Forbidden file in release");
     const full = path.join(root, relative),
       st = fs.lstatSync(full);
@@ -140,7 +147,8 @@ export function packageRelease(source = process.cwd()) {
   assert.equal(process.platform, "linux");
   assert.equal(process.arch, "x64");
   assert.equal(process.versions.node, "24.22.2");
-  assert.equal(process.env.SITE_URL, "http://127.0.0.1:3120");
+  const mode = releaseMode();
+  assert.equal(process.env.SITE_URL, releaseOrigins[mode]);
   const commit = process.env.GITHUB_SHA;
   assert.match(commit || "", /^[a-f0-9]{40}$/);
   const run = process.env.GITHUB_RUN_ID || "local";
@@ -171,7 +179,7 @@ export function packageRelease(source = process.cwd()) {
       path.join(release, "RELEASE_MANIFEST.json"),
       JSON.stringify(
         {
-          purpose: "private-preview-only",
+          purpose: mode === "production" ? "production" : "private-preview-only",
           commit,
           workflowRun: run,
           node: process.versions.node,
@@ -192,7 +200,7 @@ export function packageRelease(source = process.cwd()) {
       ),
     );
     fs.mkdirSync(out, { recursive: true });
-    const filename = `hushangyin-preview-${commit.slice(0, 12)}-${run}.tar.gz`,
+    const filename = `hushangyin-${mode}-${commit.slice(0, 12)}-${run}.tar.gz`,
       archive = path.join(out, filename);
     assert.ok(
       !fs.existsSync(archive),

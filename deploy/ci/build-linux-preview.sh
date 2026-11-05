@@ -4,6 +4,13 @@ set -euo pipefail
 source_archive=$(realpath "${1:?Source archive required}")
 output=$(realpath -m "${2:?Artifact directory required}")
 [[ ${GITHUB_SHA:-} =~ ^[a-f0-9]{40}$ && ${GITHUB_RUN_ID:-} =~ ^[a-zA-Z0-9_-]+$ ]]
+HSY_RELEASE_MODE=${HSY_RELEASE_MODE:-preview}
+case "$HSY_RELEASE_MODE" in
+  preview) SITE_URL=http://127.0.0.1:3120 ;;
+  production) SITE_URL=https://hushangyin.linhongtech.com ;;
+  *) echo 'Invalid release mode' >&2; exit 1 ;;
+esac
+export HSY_RELEASE_MODE SITE_URL
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
@@ -11,7 +18,7 @@ mkdir "$scratch/image" "$scratch/candidate"
 cp "$here/../ecs/node24-checksums.txt" "$scratch/image/"
 cp "$source_archive" "$scratch/source.tar"
 image="hushangyin-preview-ci:$GITHUB_RUN_ID"
-filename="hushangyin-preview-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID.tar.gz"
+filename="hushangyin-$HSY_RELEASE_MODE-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID.tar.gz"
 
 echo 'Runner OpenSSL inventory (read only)'
 openssl version
@@ -23,7 +30,7 @@ docker build --platform linux/amd64 -f "$here/Dockerfile" -t "$image" "$scratch/
 docker run --rm --platform linux/amd64 \
   --mount "type=bind,source=$scratch/source.tar,target=/source.tar,readonly" \
   --mount "type=bind,source=$scratch/candidate,target=/candidate" \
-  --env GITHUB_SHA --env GITHUB_RUN_ID --env HSY_ARTIFACT_DIR=/candidate \
+  --env HSY_RELEASE_MODE --env SITE_URL --env GITHUB_SHA --env GITHUB_RUN_ID --env HSY_ARTIFACT_DIR=/candidate \
   --workdir /build "$image" bash -euc '
     tar -xf /source.tar
     openssl version
@@ -42,9 +49,12 @@ test -s "$scratch/candidate/$filename"
 docker run --rm --platform linux/amd64 --network none \
   --mount "type=bind,source=$scratch/source.tar,target=/source.tar,readonly" \
   --mount "type=bind,source=$scratch/candidate,target=/candidate,readonly" \
-  --env "HSY_PARENT_NETWORK=$(readlink /proc/self/ns/net)" \
+  --env HSY_RELEASE_MODE --env "HSY_PARENT_NETWORK=$(readlink /proc/self/ns/net)" \
   --env "HSY_CANDIDATE=$filename" --workdir /verify "$image" bash -euc '
-    tar -xf /source.tar deploy/ci
+    tar -xf /source.tar deploy/ci deploy/ecs deploy/tests
+    bash deploy/ecs/check-syntax.sh
+    bash deploy/tests/production-cutover.sh
+    bash deploy/tests/preview-current.sh
     archive="/candidate/$HSY_CANDIDATE"
     node deploy/ci/smoke-release.mjs "$archive"
     node deploy/ci/prisma-readonly.mjs "$archive" "$HSY_PARENT_NETWORK"
